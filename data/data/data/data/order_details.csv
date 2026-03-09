@@ -1,0 +1,7 @@
+order_detail_id,order_id,product_id,quantity
+OD1,O101,P101,1
+OD2,O102,P102,1
+OD3,O103,P103,1
+OD4,O104,P104,1
+OD5,O105,P105,1
+OD6,O106,P101,1
