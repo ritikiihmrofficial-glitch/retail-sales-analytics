@@ -1,0 +1,7 @@
+customer_id,customer_name,gender,city,join_date
+C101,Amit Sharma,Male,Delhi,2023-01-10
+C102,Priya Gupta,Female,Mumbai,2023-02-05
+C103,Rahul Singh,Male,Bangalore,2023-03-20
+C104,Neha Verma,Female,Delhi,2023-04-15
+C105,Arjun Patel,Male,Ahmedabad,2023-05-10
+C106,Riya Kapoor,Female,Delhi,2023-06-12
