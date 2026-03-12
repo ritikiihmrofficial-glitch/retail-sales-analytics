@@ -1,3 +1,480 @@
+create database if not exists my_retail;
+
+use my_retail;
+drop table customer_profiles;
+
+select * from customer_profiles limit 3;
+
+alter table customer_profiles 
+change column ï»¿CustomerID CustomerID INT;
+
+alter table  sales_transaction
+change column ï»¿TransactionID TransactionID INT;
+
+ALTER TABLE customer_profiles
+ADD COLUMN formatted_date DATE;
+
+set sql_safe_updates = 0;
+
+UPDATE customer_profiles
+SET formatted_date = STR_TO_DATE(JoinDate, '%d/%m/%y');
+
+
+
+alter table product_inventory 
+change column ï»¿ProductID ProductID INT;
+
+
+
+/*
+Background : 
+
+In the rapidly evolving retail sector, businesses continually seek innovative strategies to stay ahead of the competition, 
+improve customer satisfaction, and optimize operational efficiency. Leveraging data analytics has become a cornerstone for achieving 
+these objectives. This case study focuses on a retail company that has encountered challenges in understanding its sales performance, 
+customer engagement, and inventory management. Through a comprehensive data analysis approach, the company aims to identify high or 
+low sales products, effectively segment its customer base, and analyze customer behavior to enhance marketing strategies, inventory
+ decisions, and overall customer experience.
+ 
+L4Q Rev > 0 - Repeat 
+L4Q Rev <0 and L12Q Rev > 0 - Lapsing
+L5Q Rev <0 and L12Q Rev > 0 - Inactive
+L12Q < 0 - Non Buyers
+
+Business Problem :
+The retail company has observed stagnant growth and declining customer engagement metrics over the past quarters. Initial assessments 
+indicate potential issues in product performance variability, ineffective customer segmentation, and lack of insights into customer
+purchasing behavior. The company seeks to leverage its sales transaction data, customer profiles, and product inventory information 
+to address the following key business problems:
+1. Product Performance Variability: Identifying which products are performing well in terms of sales and which are not. This insight 
+is crucial for inventory management and marketing focus.
+2. Customer Segmentation: The company lacks a clear understanding of its customer base segmentation. Effective segmentation is 
+essential for targeted marketing and enhancing customer satisfaction.
+3. Customer Behavior Analysis: Understanding patterns in customer behavior, including repeat purchases and loyalty indicators, is 
+critical for tailoring customer engagement strategies and improving retention rates.
+
+Objectives
+To utilize SQL queries for data cleaning and exploratory data analysis to ensure data quality and gain initial insights.
+To identify high and low sales products to optimize inventory and tailor marketing efforts.
+To segment customers based on their purchasing behavior for targeted marketing campaigns. Create Customer segments - 
+
+Total Number of order Customer_Segment
+0							No Orders
+1-10						Low
+10-30						Mid
+>30							High Values
+
+To analyze customer behavior for insights on repeat purchases and loyalty, informing customer retention strategies.
+
+Datasets
+Sales Transactions Dataset: Records of sales transactions, including transaction ID, customer ID, product ID, quantity purchased, 
+							transaction date, and price.
+Customer Profiles Dataset: Information on customers, including customer ID, age, gender, location, and join date.
+Product Inventory Dataset: Data on product inventory, including product ID, product name, category, stock level, and price.
+
+
+Activity/Outcomes 
+
+Data Cleaning
+Remove duplicate transactions and correct any discrepancies in product prices between sales transactions and product inventory. Also 
+take care of null values 
+
+Exploratory Data Analysis (EDA)
+Perform basic product performance overview, customer purchase frequency analysis, and product categories performance evaluation.
+
+Detailed Analysis
+High or Low Sales Products: Identify products with the highest and lowest sales to inform inventory decisions. Also find the sales 
+trends and the m-o-m growth of sales from the dataset 
+Customer Segmentation: Segment customers based on total products purchased  and spending to tailor marketing efforts. Also identify 
+loyal customer based on duration between purchases 
+Customer Behavior Analysis: Analyze patterns in repeat purchases and loyalty indicators to improve customer retention and satisfaction.
+Also, segment customers based on total quantity of products purchased 
+
+*/
+
+/* 
+Data Cleaning  
+
+1. Remove duplicate transactions
+hint : there are 2 duplicate records in the sales transaction table, identify them 
+*/
+
+SELECT TransactionID, count(*) FROM sales_transaction
+GROUP BY TransactionID
+HAVING COUNT(*)>1;
+
+
+select count(*) from sales_transaction;
+
+# create a new table and push only distinct records into it 
+create table sales_transaction_nodupe as
+select distinct * from sales_transaction;
+
+select count(*) from sales_transaction_nodupe;
+
+
+# delete table with duplicates 
+
+drop table sales_transaction;
+
+# rename the nodupe to sales_transactions
+
+Alter table sales_transaction_nodupe rename to sales_transaction;
+
+select TransactionID,count(*) from sales_transaction
+group by TransactionID
+having count(*) >1;
+
+
+# Identify and Fix Incorrect Prices in Sales Transactions
+
+/*First, identify discrepancies between sales_transactions.PricePerPiece and product_inventory.PricePerPiece for the same ProductID. */
+
+select 
+st.*,
+pi.Productid,
+pi.price as InventoryPrice
+from sales_transaction st
+join product_inventory pi on st.productid = pi.productid
+where st.price <> pi.price;
+
+
+#  update the sales transactions to match the inventory prices where discrepancies are found
+
+
+Update sales_transaction st
+set Price = (
+select pi.price 
+from product_inventory pi 
+where st.priductid = pi.producctid)
+where st.productid in (
+select productid from product_inventory where st.price <> product_inventory.price);
+
+
+-- the above query as 2 correlated subqueires which execute row by row
+-- first the subquery in the where clause executes and gives the list of product the have a problem
+-- next the subquery to update the price executes along with update
+
+
+Update sales_transaction st
+join product_inventory pi on st.productid = pi.productid
+set st.price = pi.price
+where st.price <> pi.price;
+
+--  To identify nulls values in the dataset and then replace it by ‘Unknown’
+-- hint 1 : use customer table
+
+
+select count(*) from customer_profiles where location is null;
+
+select count(*) from customer_profiles where location = '';
+select count(*) from customer_profiles where trim(location) = '';
+
+
+Update customer_profiles
+set location = (
+select location from (
+select location from customer_profiles
+where trim(location)<>'' and location is not null
+group by location
+order by count(*) desc
+limit 1
+) as mode_identifier
+)
+where trim(location) ='';
+
+select * from customer_profiles;
+
+alter table customer_profiles drop formatted_date;
+
+
+alter table customer_profiles
+add column formatted_date Date;
+
+update customer_profiles
+set formatted_date = str_to_date(JoinDate,'%d/%m/%y');
+
+-- you can use date_format
+/*
+EDA
+Basic Product Performance Overview
+	Get a summary of total sales and quantities sold per product.
+*/
+
+USE MY_RETAIL;
+
+SELECT ProductID, SUM(QuantityPurchased) AS TotalUnitsSold, round(SUM(Price * QuantityPurchased),0) AS TotalSales 
+FROM sales_transaction
+GROUP BY ProductID 
+ORDER BY TotalSales DESC; 
+
+
+--  CASTING to DATE in Sales_transaction file
+/*
+Write a SQL query to clean the DATE column in the dataset.
+
+Steps:
+
+Create a separate table and change the data type of the date column and name it as you wish to. 
+Remove the original table from the database.
+Change the name of the new table and replace it with the original name of the table.
+
+*/
+
+create table sales_transaction_updated as
+select * , cast(TransactionDate as date) as TransactionDate_updated 
+from sales_transaction;
+
+select * from sales_transaction_updated;
+
+drop table sales_transaction_updated;
+
+/*
+here cast didnt convert the text to date. the transaction date in the sales_transaction table is stored as string('14/01/23'), and the default cast(... as date) 
+or str_to_date(..) in mysql expects a standard format like('YYYY-MM-DD'). since '14/01/23' is in the 'DD/MM/YY' format , the cast fails or gives incorrect output like 2014-01-23
+
+*/
+
+select str_to_date('14/01/23','%d/%m/%y') as corrected_date;
+
+create table sales_transaction_updated as
+select * , str_to_date(TransactionDate,'%d/%m/%y') as TransactionDate_updated 
+from sales_transaction;
+
+
+select * from sales_transaction_updated;
+
+drop table sales_transaction;
+
+alter table sales_transaction_updated rename to sales_transaction;
+
+select * from sales_transaction;
+
+
+-- Count the number of transactions per customer to understand purchase frequency.
+
+/*
+hints : 
+
+Write a SQL query to count the number of transactions per customer to understand purchase frequency. 
+
+Hint:
+Use the “Sales_transaction” table.
+The resulting table will be counting the number of transactions corresponding to each customerID.
+Return the result table ordered by NumberOfTransactions in descending order.
+
+*/
+
+SELECT CustomerID, COUNT(*) AS NumberOfTransactions 
+FROM sales_transaction
+GROUP BY CustomerID 
+ORDER BY NumberOfTransactions DESC; 
+
+-- Evaluate performance of product categories based on total sales.
+
+/*
+Write a SQL query to evaluate the performance of the product categories based on the total sales which help us understand the 
+product categories which needs to be promoted in the marketing campaigns.
+
+Hints: 
+Use the “Sales_transaction” and the “Product_inventory” tables. 
+The resulting table must display product categories, the aggregated count of units sold for each category, and the total sales 
+value per category.  
+Return the result table ordering by TotalSales in descending order.
+
+*/
+
+select 
+pi.category,
+sum(st.QuantityPurchased) as Total_Units_Sold,
+round(sum(st.Price*st.QuantityPurchased),0) as Total_sales
+from sales_transaction st
+join product_inventory pi on st.ProductID = pi.ProductID
+group by pi.category
+order by Total_sales desc;
+
+/*
+Products with the highest total sales revenue.
+Write a SQL query to find the top 10 products with the highest total sales revenue from the sales transactions. 
+This will help the company to identify the High sales products which needs to be focused to increase the revenue of the company.
+*/
+
+select productid,round(sum(price*QuantityPurchased),2) as totalRevenue
+from sales_transaction
+group by productid
+order by totalRevenue desc limit 10;
+
+/* 
+Low Sales Products 
+Write a SQL query to find the ten products with the least amount of units sold from the sales transactions,
+provided that atleast one unit was sold for those products. 
+
+-- with rank
+-- with dense rank
+-- with row num
+-- limit 
+*/
+
+
+with productsales as (
+select 
+productid,
+sum(QuantityPurchased) as totalunitssold
+from sales_transaction
+group by ProductID
+),
+Rankedsales as (
+select
+	productid,
+    totalunitssold,
+    rank() over (order by totalunitssold desc) as rnk,
+	dense_rank() over (order by totalunitssold desc) as dense_rnk,
+	row_number() over (order by totalunitssold desc) as row_num
+from productsales
+)
+select productid,totalunitssold,rnk from Rankedsales
+where row_num <= 10;
+
+-- Write a SQL query to identify the sales trend to understand the revenue pattern of the company.
+/*
+Hint: 
+Use the “sales_transaction” table.
+The resulting table must have DATETRANS in date format, count the number of transaction on that particular date, 
+total units sold and the total sales took place. 
+Return the result table ordered by datetrans in descending order. 
+
+*/
+
+
+select 
+transactionDate_updated,
+count(*) as transaction_count,
+sum(quantitypurchased) as totalunitsSold,
+round(sum(Price * QuantityPurchased)) AS TotalSales 
+from sales_transaction
+group by transactionDate_updated
+order by transactionDate_updated asc;
+
+/*
+Write a SQL query to understand the month on month growth rate of sales of the company which will help understand the growth 
+trend of the company.
+
+*/
+
+with monthly_sales as 
+(
+	select
+    month(TransactionDate_updated) as month,
+    round(SUM(QuantityPurchased*Price)) AS total_sales
+	from sales_transaction
+    group by month(TransactionDate_updated)
+)
+select 
+	month,
+    total_sales,
+    lag(total_sales) over (order by month) as prev_month_sales,
+    round((total_sales/(lag(total_sales) over (order by month))-1)*100,1) as mom_growth_percentage
+from
+monthly_sales;
+
+-- Write a SQL query that describes the number of transaction along with the total amount spent by each customer which are on the
+-- higher side and will help us understand the customers who are the high frequency purchase customers in the company.
+
+use my_retail;
+
+desc customer_profiles;
+desc product_inventory;
+desc sales_transaction;
+
+
+-- The result must have number of transactions more than 10 and total spend more than 1000 on those transaction by corresponding
+-- customer
+
+SELECT CustomerID, COUNT(*) AS NumberOfTransactions, 
+round(SUM(Price * QuantityPurchased)) AS TotalSpent 
+FROM sales_transaction
+GROUP BY CustomerID HAVING NumberOfTransactions > 10 AND TotalSpent > 1000 
+ORDER BY TotalSpent DESC; 
+
+
+-- Occasional customers- Low Purchase Frequency
+
+-- the result table must have number of transaction less than or equal to 2 and corresponding total amount spent on those 
+-- transactions by related customers 
+
+SELECT CustomerID, COUNT(*) AS NumberOfTransactions, SUM(Price * QuantityPurchased) AS TotalSpent 
+FROM sales_transaction
+GROUP BY CustomerID HAVING NumberOfTransactions <= 2 -- Customers with 2 or fewer transactions 
+ORDER BY NumberOfTransactions ASC, TotalSpent DESC; 
+
+
+/*
+Write a SQL query that describes the total number of purchases made by each customer against each 
+productID to understand the repeat customers in the company. */
+
+SELECT CustomerID, ProductID, COUNT(*) AS TimesPurchased 
+FROM sales_transaction
+GROUP BY CustomerID, ProductID HAVING TimesPurchased > 1 
+ORDER BY TimesPurchased DESC, CustomerID; 
+
+
+-- Loyality Indicators
+
+-- Duration between the first and the last purchase as an indicator
+
+-- The result table must have the first date of purchase , the last date of purchage and the difference between the first
+-- and last date 
+/*
+A useful loyalty indicator could include :
+> Number of purchases
+> Average days between purchases
+> recency (how recently they purchased)
+> Duration of relation (Firt to last purchase span)
+
+
+*/
+
+With Purchase_Summary as(
+select 
+CustomerID, 
+count(*) As TotalPurchases,
+max(TransactionDate_updated) as lastpurchase, min(TransactionDate_updated) as firstpurchase,
+datediff(max(TransactionDate_updated),min(TransactionDate_updated)) as DaysBetweenFirstAndLast, 
+Datediff('2023-07-30',max(TransactionDate_updated)) as DaysSinceLastPurchase
+from sales_transaction
+group by CustomerID
+order by TotalPurchases desc, DaysBetweenFirstAndLast desc
+),
+
+Loyalty_Score AS (
+select *,
+Round(DaysBetweenFirstAndLast/NullIF(TotalPurchases,0),1) As AvgDaysBetweenPurchases
+from Purchase_Summary
+)
+
+select 
+CustomerID,
+TotalPurchases,
+firstpurchase,
+lastpurchase,
+DaysBetweenFirstAndLast,
+DaysSinceLastPurchase,
+AvgDaysBetweenPurchases,
+Case 
+	when totalpurchases >=10 and DaysSinceLastPurchase<=30 Then 'High Loyalty'
+    when totalpurchases >=5 and DaysSinceLastPurchase<=60 Then 'Moderate Loyalty' 
+	Else 'Low Loyalty'
+End as LoyaltyTier
+from Loyalty_Score
+order by LoyaltyTier, AvgDaysBetweenPurchases;
+
+
+-- 2023-07-30
+
+select max(TransactionDate_updated), min(TransactionDate_updated) from sales_transaction;
+
+
+
 -- Total Revenue
 SELECT SUM(total_amount) AS total_revenue
 FROM orders;
